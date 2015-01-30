@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <array name="unlock">
+        <item>@drawable/ic_lockscreen_unlock</item>
+        <item>@null</item>"
+        <item>@null</item>"
+        <item>@null</item>"
+    </array>
+
+    <array name="lock">
+        <item>@null</item>"
+        <item>@null</item>"
+        <item>@drawable/ic_unlockscreen_lock</item>
+        <item>@null</item>"
+    </array>
+
+    <array name="empty">
+        <item>@null</item>"
+        <item>@null</item>"
+        <item>@null</item>"
+        <item>@null</item>"
+    </array>
+</resources>

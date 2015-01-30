@@ -1,14 +1,22 @@
 #
-# generated on 2015/01/24 05:07:15
+# generated on 2015/01/28 05:55:16
 #
 # --table-start--
 dataClass=db.Lock
 tableName=Locks
 # --table-fields-start--
 # --field-start--
-fieldName=id
-columnName=id
+fieldName=address
+columnName=address
 id=true
+# --field-end--
+# --field-start--
+fieldName=name
+columnName=name
+# --field-end--
+# --field-start--
+fieldName=id
+columnName=name
 # --field-end--
 # --field-start--
 fieldName=secretKey

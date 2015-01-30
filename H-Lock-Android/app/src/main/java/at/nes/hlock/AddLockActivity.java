@@ -1,42 +1,43 @@
 package at.nes.hlock;
 
-import android.app.Activity;
+import android.app.ProgressDialog;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothGattCharacteristic;
-import android.bluetooth.BluetoothManager;
 import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.ServiceConnection;
-import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
-import android.support.v7.app.ActionBarActivity;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewStub;
 import android.widget.AdapterView;
 import android.widget.BaseAdapter;
+import android.widget.Button;
 import android.widget.ListView;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 
 import butterknife.ButterKnife;
 import butterknife.InjectView;
+import db.Lock;
 
 
-public class AddNewActivity extends ActionBarActivity {
+public class AddLockActivity extends BaseActivity  {
 
-    private final static int REQUEST_ENABLE_BT = 1;
+    private final static int REQUEST_ADD_LOCK = 2;
 
     @InjectView(R.id.listView)
     ListView listView;
@@ -46,12 +47,12 @@ public class AddNewActivity extends ActionBarActivity {
     private String mDeviceName;
     private String mDeviceAddress;
 
-    private BluetoothAdapter mBluetoothAdapter;
     private BLService mBluetoothLeService;
     private boolean mScanning;
     private Handler mScanHandler;
+    private boolean mWelcomeOverlayVisible = false;
 
-    boolean mBound = false; // mServiceConnection
+    boolean mBound = false; // For mServiceConnection
 
     private final ServiceConnection mServiceConnection = new ServiceConnection() {
         @Override
@@ -60,7 +61,6 @@ public class AddNewActivity extends ActionBarActivity {
             mBluetoothLeService = ((BLService.LocalBinder) service)
                     .getService();
             if (!mBluetoothLeService.initialize()) {
-                Log.e("dev", "Unable to initialize Bluetooth");
                 finish();
             }
             mBound = true;
@@ -71,40 +71,50 @@ public class AddNewActivity extends ActionBarActivity {
             mBound = false;
         }
     };
+    private ProgressDialog barProgressDialog;
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
         setContentView(R.layout.activity_add_new);
         ButterKnife.inject(this);
 
+        // Check if it's the first run, show welcome view
+        if(mSharedPref.getBoolean(MyApplication.SHARED_PREF_FIRST_RUN, true)){
+            mWelcomeOverlayVisible = true;
+            final View welcomeOverlay = ((ViewStub) findViewById(R.id.stub_welcome)).inflate();
+            Button welcomeButton = ButterKnife.findById(welcomeOverlay, R.id.welcomeButton);
+            welcomeButton.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    welcomeOverlay.setVisibility(View.INVISIBLE);
+                    mWelcomeOverlayVisible = false;
+                    mSharedPrefEditor.putBoolean(MyApplication.SHARED_PREF_FIRST_RUN, false);
+                    mSharedPrefEditor.commit();
+                    scanLeDevice(true);
+                }
+            });
+        }
+
         mScanHandler = new Handler();
 
-        // Use this check to determine whether BLE is supported on the device. Then
-        // you can selectively disable BLE-related features.
-        if (!getPackageManager().hasSystemFeature(PackageManager.FEATURE_BLUETOOTH_LE)) {
-            Toast.makeText(this, R.string.ble_not_supported, Toast.LENGTH_SHORT).show();
-            finish();
-        }
-
-        // Initializes Bluetooth adapter.
-        final BluetoothManager bluetoothManager =
-                (BluetoothManager) getSystemService(Context.BLUETOOTH_SERVICE);
-        mBluetoothAdapter = bluetoothManager.getAdapter();
-
-        // Checks if Bluetooth is supported on the device.
-        if (mBluetoothAdapter == null) {
-            Toast.makeText(this, R.string.error_bluetooth_not_supported, Toast.LENGTH_SHORT).show();
-            finish();
-            return;
-        }
-
-        Intent gattServiceIntent = new Intent(AddNewActivity.this, BLService.class);
-        getApplicationContext().bindService(gattServiceIntent, mServiceConnection, BIND_AUTO_CREATE);
+        Intent gattServiceIntent = new Intent(AddLockActivity.this, BLService.class);
+        bindService(gattServiceIntent, mServiceConnection, BIND_AUTO_CREATE);
 
         listView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override
             public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
+                scanLeDevice(false);
+
+                barProgressDialog = new ProgressDialog(AddLockActivity.this);
+                barProgressDialog.setTitle("Connecting...");
+                barProgressDialog.setProgressStyle(barProgressDialog.STYLE_HORIZONTAL);
+                barProgressDialog.setIndeterminate(true);
+                barProgressDialog.setCancelable(false);
+                barProgressDialog.show();
+
                 BluetoothDevice device = mLeDeviceListAdapter.getDevice(position);
                 mDeviceAddress = device.getAddress();
                 mDeviceName = device.getName();
@@ -114,32 +124,100 @@ public class AddNewActivity extends ActionBarActivity {
             }
         });
 
-        listView.setOnItemLongClickListener(new AdapterView.OnItemLongClickListener() {
-            @Override
-            public boolean onItemLongClick(AdapterView<?> parent, View view, int position, long id) {
-                BluetoothGattCharacteristic characteristic = mBluetoothLeService.map.get(BLService.UUID_BLE_SHIELD_TX);
-                characteristic.setValue(new byte[]{LockProtocol.types.REGISTRATION_REQ});
-                mBluetoothLeService.writeCharacteristic(characteristic);
-                return false;
-            }
-        });
+    }
+
+    private void sendRegistrationRequest(){
+        if(barProgressDialog != null) {
+            barProgressDialog.dismiss();
+        }
+        barProgressDialog = new ProgressDialog(AddLockActivity.this);
+        barProgressDialog.setTitle("Complete registration");
+        barProgressDialog.setMessage("Press button on the lock to complete registration.");
+        barProgressDialog.setCancelable(false);
+        barProgressDialog.setProgressStyle(barProgressDialog.STYLE_HORIZONTAL);
+        barProgressDialog.setIndeterminate(false);
+        barProgressDialog.setMax(5);
+        barProgressDialog.setProgress(5);
+        barProgressDialog.show();
+
+//        final Handler h = new Handler();
+//        h.postDelayed(new Runnable() {
+//            @Override
+//            public void run() {
+//                if(barProgressDialog != null) {
+//                    if(barProgressDialog.getProgress() == 0){
+//                        barProgressDialog.dismiss();
+//                    }else {
+//                        barProgressDialog.incrementProgressBy(-1);
+//                        h.postDelayed(this, 1000);
+//                    }
+//                }
+//            }
+//        }, 1000);
+
+//        final Timer mTimer = new Timer();
+//        mTimer.schedule(new TimerTask() {
+//
+//            @Override
+//            public void run() {
+//                if(barProgressDialog != null) {
+//                    if(barProgressDialog.getProgress() == 0){
+//                        mTimer.cancel();
+//                        barProgressDialog.dismiss();
+//                    }else {
+//                        barProgressDialog.incrementProgressBy(-1);
+//                    }
+//                }
+//            }
+//        }, 1000, 1000);
+
+        BluetoothGattCharacteristic characteristicTx= mBluetoothLeService.map.get(BLService.UUID_BLE_SHIELD_TX);
+
+        characteristicTx.setValue(new byte[]{LockProtocol.types.REGISTRATION_REQ});
+        mBluetoothLeService.writeCharacteristic(characteristicTx);
     }
 
     private final BroadcastReceiver mGattUpdateReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
             final String action = intent.getAction();
+            if (BLService.ACTION_GATT_CONNECTED.equals(action)) {
+                Log.d("dev", "blabla");
+                new Handler().postDelayed(new Runnable() {
+                    @Override
+                    public void run() {
+                        sendRegistrationRequest();
+                    }
+                }, 500);
+            }else
             if (BLService.ACTION_GATT_DISCONNECTED.equals(action)) {
 
             }else if (BLService.ACTION_DATA_AVAILABLE.equals(action)) {
-                displayData(intent.getByteArrayExtra(BLService.EXTRA_DATA));
+                String characteristicName = intent.getStringExtra(BLService.CHARACTERISTIC_NAME);
+
+                if(GattAttributes.BLE_SHIELD_RX.equals(characteristicName)){
+                    handleRegistrationResponse(intent.getByteArrayExtra(BLService.EXTRA_DATA));
+                }
             }
         }
     };
 
-    private void displayData(byte[] response) {
-        if(response[0] == LockProtocol.types.KEY_EXCHANGE){
+    private void handleRegistrationResponse(byte[] byteArray) {
+        barProgressDialog.dismiss();
+        barProgressDialog = null;
 
+        if(byteArray[0] == LockProtocol.types.KEY_EXCHANGE){
+            Lock newLock = new Lock(mDeviceAddress, mDeviceName,
+                                    byteArray[LockProtocol.lengths.TYPE],
+                                    Arrays.copyOfRange(byteArray, LockProtocol.lengths.TYPE+LockProtocol.lengths.ID, LockProtocol.lengths.MESSAGE));
+            // Persist the object to the database
+            mSimpleDao.create(newLock);
+            Toast.makeText(this, "Registration successful", Toast.LENGTH_LONG).show();
+
+            finish();
+        }else{
+            mBluetoothLeService.disconnect();
+            Toast.makeText(this, "Registration failed", Toast.LENGTH_LONG).show();
         }
     }
 
@@ -147,13 +225,13 @@ public class AddNewActivity extends ActionBarActivity {
     protected void onResume() {
         super.onResume();
 
-        // Ensures Bluetooth is enabled.
-        enableBluetooth();
-
         // Initializes list view adapter.
         mLeDeviceListAdapter = new LeDeviceListAdapter();
         listView.setAdapter(mLeDeviceListAdapter);
-        scanLeDevice(true);
+
+        if(!mWelcomeOverlayVisible){
+            scanLeDevice(true);
+        }
 
         registerReceiver(mGattUpdateReceiver, makeGattUpdateIntentFilter());
     }
@@ -169,6 +247,8 @@ public class AddNewActivity extends ActionBarActivity {
 
     @Override
     protected void onPause() {
+        Log.d("dev", "pause");
+        unregisterReceiver(mGattUpdateReceiver);
         super.onPause();
         scanLeDevice(false);
         mLeDeviceListAdapter.clear();
@@ -176,8 +256,9 @@ public class AddNewActivity extends ActionBarActivity {
 
     @Override
     protected void onStop() {
+        Log.d("dev", "stop");
+//        unregisterReceiver(mGattUpdateReceiver);
         super.onStop();
-        unregisterReceiver(mGattUpdateReceiver);
     }
 
     @Override
@@ -190,17 +271,6 @@ public class AddNewActivity extends ActionBarActivity {
             unbindService(mServiceConnection);
         }
         mBluetoothLeService = null;
-    }
-
-    private void enableBluetooth(){
-        // Ensures Bluetooth is enabled on the device.  If Bluetooth is not currently enabled,
-        // fire an intent to display a dialog asking the user to grant permission to enable it.
-        if (!mBluetoothAdapter.isEnabled()) {
-            if (!mBluetoothAdapter.isEnabled()) {
-                Intent enableBtIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
-                startActivityForResult(enableBtIntent, REQUEST_ENABLE_BT);
-            }
-        }
     }
 
     // Stops scanning after 10 seconds.
@@ -255,7 +325,7 @@ public class AddNewActivity extends ActionBarActivity {
         public LeDeviceListAdapter() {
             super();
             mLeDevices = new ArrayList<BluetoothDevice>();
-            mInflator = AddNewActivity.this.getLayoutInflater();
+            mInflator = AddLockActivity.this.getLayoutInflater();
         }
 
         public void addDevice(BluetoothDevice device) {
@@ -338,22 +408,13 @@ public class AddNewActivity extends ActionBarActivity {
                 }
             };
 
-    @Override
-    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        // User chose not to enable Bluetooth.
-        if (requestCode == REQUEST_ENABLE_BT && resultCode == Activity.RESULT_CANCELED) {
-            finish();
-            return;
-        }
-        super.onActivityResult(requestCode, resultCode, data);
-    }
 
 
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
         this.actionMenu = menu;
         // Inflate the menu; this adds items to the action bar if it is present.
-        getMenuInflater().inflate(R.menu.menu_main, menu);
+        getMenuInflater().inflate(R.menu.menu_add_new, menu);
         return true;
     }
 
@@ -362,11 +423,6 @@ public class AddNewActivity extends ActionBarActivity {
         switch (item.getItemId()) {
             case R.id.action_refresh:
                 scanLeDevice(true);
-                return true;
-            case R.id.action_new:
-                return true;
-            case R.id.action_settings:
-//                openSettings();
                 return true;
             default:
                 return super.onOptionsItemSelected(item);

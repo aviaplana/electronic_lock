@@ -13,6 +13,8 @@ public class LockProtocol {
         public static final byte ERROR_AUTHENTICATION = 6;
         public static final byte ERROR_WRONG_ID = 7;
         public static final byte ERROR_WRONG_COMMAND = 8;
+        public static final byte STATUS_UNLOCKED = 0;
+        public static final byte STATUS_LOCKED = 1;
     }
 
     // message parts length
@@ -24,5 +26,11 @@ public class LockProtocol {
         public static final int HMAC= 14;
         public static final int MESSAGE_FIRST_PART = TYPE + RANDOM + ID;
         public static final int MESSAGE = 20;
+    }
+
+    public static class positions {
+        public static final int RANDOM = lengths.TYPE;
+        public static final int ID = lengths.TYPE + lengths.RANDOM;
+        public static final int HMAC= lengths.TYPE + lengths.RANDOM + lengths.ID;
     }
 }

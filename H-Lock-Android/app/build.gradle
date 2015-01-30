@@ -32,4 +32,6 @@ dependencies {
     compile 'com.android.support:appcompat-v7:21.0.3'
     compile 'com.jakewharton:butterknife:6.0.0'
     compile 'com.j256.ormlite:ormlite-android:+'
+    compile project(':GlowPadBackport')
+    compile 'org.altbeacon:android-beacon-library:2+@aar'
 }

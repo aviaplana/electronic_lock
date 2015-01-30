@@ -13,6 +13,7 @@ import com.j256.ormlite.table.DatabaseTable;
 public class Lock {
     public static final String ADDRESS_FIELD_NAME = "address";
     public static final String NAME_FIELD_NAME = "name";
+    public static final String USER_ID_FIELD_NAME = "userId";
     public static final String SECRET_KEY_FIELD_NAME = "secretKey";
 
 
@@ -22,6 +23,9 @@ public class Lock {
     @DatabaseField(columnName = NAME_FIELD_NAME)
     public String name;
 
+    @DatabaseField(columnName = USER_ID_FIELD_NAME)
+    public byte id;
+
     @DatabaseField(dataType = DataType.BYTE_ARRAY, columnName = SECRET_KEY_FIELD_NAME)
     public byte[] secretKey;
 
@@ -30,9 +34,10 @@ public class Lock {
         // needed by ormlite
     }
 
-    public Lock(String address, String name, byte[] secretKey) {
+    public Lock(String address, String name, byte id, byte[] secretKey) {
         this.address = address;
         this.name = name;
+        this.id = id;
         this.secretKey = secretKey;
     }
 }

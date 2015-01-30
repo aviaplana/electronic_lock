@@ -3,25 +3,12 @@ package at.nes.hlock;
 /**
  * Created by Andraz Pajtler on 21/01/15.
  */
-/*
- * Copyright (C) 2013 The Android Open Source Project
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
 
 import java.util.HashMap;
+import java.util.LinkedList;
+import java.util.List;
 import java.util.Map;
+import java.util.Queue;
 import java.util.UUID;
 
 import android.app.Service;
@@ -57,16 +44,18 @@ public class BLService extends Service {
     public final static String ACTION_GATT_SERVICES_DISCOVERED = "ACTION_GATT_SERVICES_DISCOVERED";
     public final static String ACTION_GATT_RSSI = "ACTION_GATT_RSSI";
     public final static String ACTION_DATA_AVAILABLE = "ACTION_DATA_AVAILABLE";
+    public final static String CHARACTERISTIC_NAME = "CHARACTERISTIC";
     public final static String EXTRA_DATA = "EXTRA_DATA";
 
-    public final static UUID UUID_BLE_SHIELD_TX = UUID
-            .fromString(GattAttributes.BLE_SHIELD_TX);
-    public final static UUID UUID_BLE_SHIELD_RX = UUID
-            .fromString(GattAttributes.BLE_SHIELD_RX);
-    public final static UUID UUID_BLE_SHIELD_SERVICE = UUID
-            .fromString(GattAttributes.BLE_SHIELD_SERVICE);
+    public final static UUID UUID_BLE_SHIELD_TX = UUID.fromString(GattAttributes.BLE_SHIELD_TX);
+    public final static UUID UUID_BLE_SHIELD_RX = UUID.fromString(GattAttributes.BLE_SHIELD_RX);
+    public final static UUID UUID_BLE_SHIELD_LOCK = UUID.fromString(GattAttributes.BLE_SHIELD_LOCK);
+    public final static UUID UUID_BLE_SHIELD_SERVICE = UUID.fromString(GattAttributes.BLE_SHIELD_SERVICE);
 
     public Map<UUID, BluetoothGattCharacteristic> map = new HashMap<UUID, BluetoothGattCharacteristic>();
+
+    private Queue<BluetoothGattDescriptor> descriptorWriteQueue = new LinkedList<BluetoothGattDescriptor>();
+    private Queue<BluetoothGattCharacteristic> characteristicReadQueue = new LinkedList<BluetoothGattCharacteristic>();
 
     private final BluetoothGattCallback mGattCallback = new BluetoothGattCallback() {
         @Override
@@ -75,8 +64,6 @@ public class BLService extends Service {
             String intentAction;
 
             if (newState == BluetoothProfile.STATE_CONNECTED) {
-                intentAction = ACTION_GATT_CONNECTED;
-                broadcastUpdate(intentAction);
                 Log.i(TAG, "Connected to GATT server.");
                 // Attempts to discover services after successful connection.
                 Log.i(TAG, "Attempting to start service discovery:"
@@ -96,12 +83,11 @@ public class BLService extends Service {
             }
         }
 
-        ;
-
         @Override
         public void onServicesDiscovered(BluetoothGatt gatt, int status) {
             if (status == BluetoothGatt.GATT_SUCCESS) {
                 getSupportedGattService();
+                broadcastUpdate(ACTION_GATT_CONNECTED);
             } else {
                 Log.w(TAG, "onServicesDiscovered received: " + status);
             }
@@ -120,7 +106,24 @@ public class BLService extends Service {
                                             BluetoothGattCharacteristic characteristic) {
             broadcastUpdate(ACTION_DATA_AVAILABLE, characteristic);
         }
+
+        @Override
+        public void onDescriptorWrite(BluetoothGatt gatt, BluetoothGattDescriptor descriptor, int status) {
+            if (status == BluetoothGatt.GATT_SUCCESS) {
+                Log.d(TAG, "Callback: Wrote GATT Descriptor successfully.");
+            }
+            else{
+                Log.d(TAG, "Callback: Error writing GATT Descriptor: "+ status);
+            }
+            descriptorWriteQueue.remove();  //pop the item that we just finishing writing
+            //if there is more to write, do it!
+            if(descriptorWriteQueue.size() > 0)
+                mBluetoothGatt.writeDescriptor(descriptorWriteQueue.element());
+            else if(characteristicReadQueue.size() > 0)
+                mBluetoothGatt.readCharacteristic(characteristicReadQueue.element());
+        }
     };
+    private BluetoothDevice bluetoothDevice;
 
     private void broadcastUpdate(final String action) {
         final Intent intent = new Intent(action);
@@ -137,14 +140,9 @@ public class BLService extends Service {
                                  final BluetoothGattCharacteristic characteristic) {
         final Intent intent = new Intent(action);
 
-        // This is special handling for the Heart Rate Measurement profile. Data
-        // parsing is
-        // carried out as per profile specifications:
-        // http://developer.bluetooth.org/gatt/characteristics/Pages/CharacteristicViewer.aspx?u=org.bluetooth.characteristic.heart_rate_measurement.xml
-        if (UUID_BLE_SHIELD_RX.equals(characteristic.getUuid())) {
-            final byte[] rx = characteristic.getValue();
-            intent.putExtra(EXTRA_DATA, rx);
-        }
+        final byte[] data = characteristic.getValue();
+        intent.putExtra(CHARACTERISTIC_NAME, characteristic.getUuid().toString());
+        intent.putExtra(EXTRA_DATA, data);
 
         sendBroadcast(intent);
     }
@@ -214,13 +212,20 @@ public class BLService extends Service {
                     "BluetoothAdapter not initialized or unspecified address.");
             return false;
         }
-
         // Previously connected device. Try to reconnect.
         if (mBluetoothDeviceAddress != null
                 && address.equals(mBluetoothDeviceAddress)
                 && mBluetoothGatt != null) {
-            Log.d(TAG,
-                    "Trying to use an existing mBluetoothGatt for connection.");
+            // Already connected?
+            List<BluetoothDevice> connectedDevices = mBluetoothManager.getConnectedDevices(BluetoothProfile.GATT);
+            for (BluetoothDevice connectedDevice : connectedDevices){
+                if(connectedDevice.getAddress().equals(address)){
+                    broadcastUpdate(ACTION_GATT_CONNECTED);
+                    return true;
+                }
+            }
+
+            Log.d(TAG, "Trying to use an existing mBluetoothGatt for connection.");
             if (mBluetoothGatt.connect()) {
                 return true;
             } else {
@@ -228,16 +233,16 @@ public class BLService extends Service {
             }
         }
 
-        final BluetoothDevice device = mBluetoothAdapter
+        bluetoothDevice = mBluetoothAdapter
                 .getRemoteDevice(address);
-        if (device == null) {
+        if (bluetoothDevice == null) {
             Log.w(TAG, "Device not found.  Unable to connect.");
             return false;
         }
         // We want to directly connect to the device, so we are setting the
         // autoConnect
         // parameter to false.
-        mBluetoothGatt = device.connectGatt(this, false, mGattCallback);
+        mBluetoothGatt = bluetoothDevice.connectGatt(this, false, mGattCallback);
         Log.d(TAG, "Trying to create a new connection.");
         mBluetoothDeviceAddress = address;
 
@@ -284,7 +289,12 @@ public class BLService extends Service {
             return;
         }
 
-        mBluetoothGatt.readCharacteristic(characteristic);
+        //put the characteristic into the read queue
+        characteristicReadQueue.add(characteristic);
+        //if there is only 1 item in the queue, then read it.  If more than 1, we handle asynchronously in the callback above
+        //GIVE PRECEDENCE to descriptor writes.  They must all finish first.
+        if((characteristicReadQueue.size() == 1) && (descriptorWriteQueue.size() == 0))
+            mBluetoothGatt.readCharacteristic(characteristic);
     }
 
     public void readRssi() {
@@ -311,21 +321,28 @@ public class BLService extends Service {
      * @param characteristic Characteristic to act on.
      * @param enabled        If true, enable notification. False otherwise.
      */
-    public void setCharacteristicNotification(
-            BluetoothGattCharacteristic characteristic, boolean enabled) {
+    public void setCharacteristicNotification(BluetoothGattCharacteristic characteristic, boolean enabled) {
         if (mBluetoothAdapter == null || mBluetoothGatt == null) {
             Log.w(TAG, "BluetoothAdapter not initialized");
             return;
         }
         mBluetoothGatt.setCharacteristicNotification(characteristic, enabled);
 
-        if (UUID_BLE_SHIELD_RX.equals(characteristic.getUuid())) {
+//        if (UUID_BLE_SHIELD_RX.equals(characteristic.getUuid())) {
             BluetoothGattDescriptor descriptor = characteristic
-                    .getDescriptor(UUID
-                            .fromString(GattAttributes.CLIENT_CHARACTERISTIC_CONFIG));
-            descriptor
-                    .setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE);
-            mBluetoothGatt.writeDescriptor(descriptor);
+                                                    .getDescriptor(UUID
+                                                            .fromString(GattAttributes.CLIENT_CHARACTERISTIC_CONFIG));
+            descriptor.setValue(enabled ? BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE : new byte[]{0x00, 0x00});
+            writeGattDescriptor(descriptor);
+//        }
+    }
+
+    public void writeGattDescriptor(BluetoothGattDescriptor d){
+        //put the descriptor into the write queue
+        descriptorWriteQueue.add(d);
+        //if there is only 1 item in the queue, then write it.  If more than 1, we handle asynchronously in the callback above
+        if(descriptorWriteQueue.size() == 1){
+            mBluetoothGatt.writeDescriptor(d);
         }
     }
 
@@ -333,21 +350,27 @@ public class BLService extends Service {
      * Retrieves a list of supported GATT services on the connected device. This
      * should be invoked only after {@code BluetoothGatt#discoverServices()}
      * completes successfully.
-     *
      */
     public void getSupportedGattService() {
         if (mBluetoothGatt == null)
             return;
 
-        BluetoothGattService gattService =  mBluetoothGatt.getService(UUID_BLE_SHIELD_SERVICE);
+        BluetoothGattService gattService = mBluetoothGatt.getService(UUID_BLE_SHIELD_SERVICE);
 
-        BluetoothGattCharacteristic characteristic = gattService
+        BluetoothGattCharacteristic characteristicTx = gattService
                 .getCharacteristic(BLService.UUID_BLE_SHIELD_TX);
-        map.put(characteristic.getUuid(), characteristic);
+        map.put(characteristicTx.getUuid(), characteristicTx);
+
         BluetoothGattCharacteristic characteristicRx = gattService
                 .getCharacteristic(BLService.UUID_BLE_SHIELD_RX);
-        setCharacteristicNotification(characteristicRx,
-                true);
+        setCharacteristicNotification(characteristicRx, true);
+        map.put(characteristicRx.getUuid(), characteristicRx);
         readCharacteristic(characteristicRx);
+
+        BluetoothGattCharacteristic characteristicLock = gattService
+                .getCharacteristic(BLService.UUID_BLE_SHIELD_LOCK);
+        setCharacteristicNotification(characteristicLock, true);
+        map.put(characteristicLock.getUuid(), characteristicLock);
+        readCharacteristic(characteristicLock);
     }
 }

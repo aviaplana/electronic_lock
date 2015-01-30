@@ -9,4 +9,12 @@
     <string name="action_new_lock">Add new lock</string>
     <string name="action_refresh">Refresh list</string>
 
+    <string name="status_connecting">Connecting...</string>
+    <string name="status_connected">Connected</string>
+    <string name="status_disconnected">Disconnected</string>
+    <string name="status_locked">Locked</string>
+    <string name="status_unlocked">Unlocked</string>
+    <string name="status_in_progress">In progress...</string>
+    <string name="remove_lock">Remove lock</string>
+
 </resources>

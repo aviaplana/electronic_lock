@@ -16,6 +16,8 @@ const unsigned char ERROR_REGISTRATION_FAILED = 5;
 const unsigned char ERROR_AUTHENTICATION = 6;
 const unsigned char ERROR_WRONG_ID = 7;
 const unsigned char ERROR_WRONG_COMMAND = 8;
+const unsigned char STATUS_UNLOCKED = 0;
+const unsigned char STATUS_LOCKED = 1;
 
 // message parts length
 #define TYPE_LENGTH 1
@@ -38,7 +40,7 @@ const unsigned char ERROR_WRONG_COMMAND = 8;
 int touchRef0;
 
 // DB
-//#define DB_DEBUG
+//#define DB_CREATE
 DB db;
 
 #define MY_TBL 1
@@ -48,7 +50,7 @@ uint8_t idSeq = 0;
 struct UserRec {
   unsigned char id;
   uint8_t secretKey[HMAC_KEY_LENGTH];
-} *userRec;
+} userRec;
 
 /*----- BLE Utility -------------------------------------------------------------------------*/
 // create peripheral instance, see pinouts above
@@ -60,6 +62,8 @@ BLEService               uartService          = BLEService("713d0000503e4c75ba94
 // create characteristic
 BLECharacteristic    txCharacteristic = BLECharacteristic("713d0002503e4c75ba943148f18d941e", BLENotify, 20);
 BLECharacteristic    rxCharacteristic = BLECharacteristic("713d0003503e4c75ba943148f18d941e", BLEWriteWithoutResponse, 20);
+BLECharacteristic    statusCharacteristic = BLECharacteristic("713d0004503e4c75ba943148f18d941e", BLERead | BLENotify, 1);
+
 /*--------------------------------------------------------------------------------------------*/
 
 boolean doorsLocked = false;
@@ -70,13 +74,11 @@ void setup()
 #if defined (__AVR_ATmega32U4__)
   //Wait until the serial port is available (useful only for the Leonardo)
   //As the Leonardo board is not reseted every time you open the Serial Monitor
-  while(!Serial) {
-  }
   delay(3000);  //5 seconds delay for enabling to see the start up comments on the serial board
 #endif
 
   // DB initialization
-  #ifdef DB_DEBUG
+  #ifdef DB_CREATE
     db.create(MY_TBL,sizeof(userRec)); // Call just once, it overwrites
     EEPROM.write(ID_SEQ_LOCATION, 0);
   #else
@@ -103,6 +105,7 @@ void setup()
   blePeripheral.addAttribute(uartService);
   blePeripheral.addAttribute(rxCharacteristic);
   blePeripheral.addAttribute(txCharacteristic);
+  blePeripheral.addAttribute(statusCharacteristic);
 
   // assign event handlers for connected, disconnected to peripheral
   blePeripheral.setEventHandler(BLEConnected, blePeripheralConnectHandler);
@@ -111,23 +114,30 @@ void setup()
   // assign event handler for RX characteristic
   rxCharacteristic.setEventHandler(BLEWritten, rxCharacteristicWritten);
 
+  statusCharacteristic.setValue((doorsLocked) ? &STATUS_LOCKED : &STATUS_UNLOCKED, TYPE_LENGTH); 
   // begin initialization
   blePeripheral.begin();
   /*---------------------------------------------------------------*/
 
-  Serial.println(F("BLE UART Peripheral"));
+  Serial.println(F("H-Lock started"));
+}
+
+void loop()
+{
+  // Poll peripheral
+  blePeripheral.poll();
 }
 
 void blePeripheralConnectHandler(BLECentral& central) {
   // central connected event handler
-  Serial.print(F("Connected event, central: "));
-  Serial.println(central.address());
+  Serial.println(F("Connected to central"));
+//  Serial.println(central.address());
 }
 
 void blePeripheralDisconnectHandler(BLECentral& central) {
   // central disconnected event handler
-  Serial.print(F("Disconnected event, central: "));
-  Serial.println(central.address());
+  Serial.println(F("Disconnected from central"));
+//  Serial.println(central.address());
 
   // Clear characteristics
   txCharacteristic.setValue(0,0);
@@ -139,12 +149,12 @@ void rxCharacteristicWritten(BLECentral& central, BLECharacteristic& characteris
   const unsigned char *message = rxCharacteristic.value();
   Serial.print(F("didCharacteristicWritten, Length: ")); 
   Serial.println(len, DEC);
-  unsigned char i = 0;
-  while(i<len)
-  {
-    Serial.write(message[i++]);
-  }
-  Serial.println();
+//  unsigned char i = 0;
+//  while(i<len)
+//  {
+//    Serial.write(message[i++]);
+//  }
+//  Serial.println();
 
   if(message[0] == REGISTRATION_REQ){
       registerUser();
@@ -172,19 +182,14 @@ void rxCharacteristicWritten(BLECentral& central, BLECharacteristic& characteris
   }else{
     txCharacteristic.setValue(&ERROR_WRONG_COMMAND, TYPE_LENGTH);
   }
-//  Sha256.initHmac((const uint8_t*)"bla", 4);
-//  char m[] = {'b', 'l', 'a', 'b', 'l', 'a', '\0'};
-//  char m[] = "blabla";
-//  Sha256.print(m);
-//  printHash(Sha256.resultHmac());
 }
 
 boolean loadUser(unsigned char id){
   // Already loaded?
-  if(userRec == NULL || userRec->id != id){
+  if(userRec.id != id){
     for (int i = 1; i <= db.nRecs(); i++){
       db.read(i, DB_REC userRec);
-      if(userRec->id == id){
+      if(userRec.id == id){
         return true;
       }
     }
@@ -192,38 +197,6 @@ boolean loadUser(unsigned char id){
     return false;
   }
   return true;
-}
-
-void printHash(uint8_t* hash) {
-  int i;
-  for (i=0; i<32; i++) {
-    Serial.print("0123456789abcdef"[hash[i]>>4]);
-    Serial.print("0123456789abcdef"[hash[i]&0xf]);
-  }
-  Serial.println();
-}
-
-void loop()
-{
-  // poll peripheral
-  blePeripheral.poll();
-//  BLECentral central = blePeripheral.central();
-//
-//  if (central) 
-//  {
-//    while (central.connected()) 
-//    { 
-//      if ( Serial.available() )
-//      {
-//        delay(5);
-//        unsigned char len = 0;
-//        len = Serial.available(); 
-//        char val[len];
-//        Serial.readBytes(val, len);
-//        txCharacteristic.setValue((const unsigned char *)val, len);
-//      }
-//    }
-//  }
 }
 
 void registerUser(){
@@ -247,33 +220,33 @@ void registerUser(){
   }
 
   // Add to database
-  userRec = new UserRec();
-  userRec->id = ++idSeq;
+  userRec.id = ++idSeq;
   EEPROM.write(ID_SEQ_LOCATION, idSeq); // Save increased id sequence in EEPROM
-  memcpy(userRec->secretKey, secretKey, HMAC_KEY_LENGTH);
+  memcpy(userRec.secretKey, secretKey, HMAC_KEY_LENGTH);
   db.append(DB_REC userRec);
   
   // Send the key back
   unsigned char message[MESSAGE_LENGTH];
   message[0] = KEY_EXCHANGE;
-  message[1] = userRec->id;
+  message[1] = userRec.id;
   memcpy(message + TYPE_LENGTH + ID_LENGTH, secretKey, HMAC_KEY_LENGTH);
   txCharacteristic.setValue(message, MESSAGE_LENGTH);
 }
 
-boolean checkMessageSecurity(const unsigned char* message){
-  if(sizeof(message) == 20){
+boolean checkMessageSecurity(const unsigned char* message){ 
     unsigned char messageFirstPart[MESSAGE_FIRST_PART_LENGTH];
     memcpy(messageFirstPart, message, MESSAGE_FIRST_PART_LENGTH);
     const unsigned char* messageHMACPart = message + MESSAGE_FIRST_PART_LENGTH;
-    return memcmp(messageHMACPart, calculateHMAC(userRec->secretKey, messageFirstPart), HMAC_LENGTH) == 0;
-  }
-  return false;
+    
+    return memcmp(messageHMACPart, calculateHMAC(userRec.secretKey, messageFirstPart), HMAC_LENGTH) == 0;
 }
 
 uint8_t* calculateHMAC(uint8_t* key, unsigned char* messageFirstPart){
   Sha256.initHmac(key, HMAC_KEY_LENGTH);
-  Sha256.print((char*)messageFirstPart);
+
+  for (int i=0; i<MESSAGE_FIRST_PART_LENGTH; i++) {
+      Sha256.write(messageFirstPart[i]);
+  }
   return Sha256.resultHmac();
 }
 
@@ -290,8 +263,9 @@ void unlockDoors(){
     delay(500);
     swithchLED(false);
 
-    doorsLocked = false;  
-  }
+    doorsLocked = false;
+  }  
+  statusCharacteristic.setValue(&STATUS_UNLOCKED, TYPE_LENGTH);
 }
 
 void lockDoors(){
@@ -306,8 +280,9 @@ void lockDoors(){
     delay(500);
     swithchLED(true);
 
-    doorsLocked = true;    
+    doorsLocked = true;
   }
+  statusCharacteristic.setValue(&STATUS_LOCKED, TYPE_LENGTH);    
 }
 
 void swithchLED(boolean enable){

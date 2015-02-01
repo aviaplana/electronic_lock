@@ -37,8 +37,6 @@ import db.Lock;
 
 public class AddLockActivity extends BaseActivity  {
 
-    private final static int REQUEST_ADD_LOCK = 2;
-
     @InjectView(R.id.listView)
     ListView listView;
 
@@ -120,10 +118,8 @@ public class AddLockActivity extends BaseActivity  {
                 mDeviceName = device.getName();
 
                 mBluetoothLeService.connect(mDeviceAddress);
-
             }
         });
-
     }
 
     private void sendRegistrationRequest(){

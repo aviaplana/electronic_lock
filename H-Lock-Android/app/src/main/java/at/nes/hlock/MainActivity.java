@@ -165,7 +165,7 @@ public class MainActivity extends BaseActivity  {
         }
     }
 
-    private void disconnectToLock(){
+    private void disconnectLock(){
         forcedDisconnect = true;
         mBluetoothLeService.disconnect();
     }
@@ -190,6 +190,7 @@ public class MainActivity extends BaseActivity  {
             }else
             if (BLService.ACTION_GATT_DISCONNECTED.equals(action)) {
                 lockStatusTV.setText(R.string.status_disconnected);
+                glowPad.setHandleDrawable(R.drawable.ic_handle_disconnected);
                 glowPad.setTargetResources(R.array.empty);
                 glowPad.reset(true);
                 if(!forcedDisconnect) {
@@ -362,7 +363,7 @@ public class MainActivity extends BaseActivity  {
                         .setPositiveButton(android.R.string.yes,new DialogInterface.OnClickListener() {
                             public void onClick(DialogInterface dialog, int id) {
 //                                mBluetoothLeService.disconnect();
-                                disconnectToLock();
+                                disconnectLock();
                                 mSimpleDao.delete(selectedLock);
                                 Intent intent = new Intent(MainActivity.this, AddLockActivity.class);
                                 startActivityForResult(intent, REQUEST_ADD_LOCK);

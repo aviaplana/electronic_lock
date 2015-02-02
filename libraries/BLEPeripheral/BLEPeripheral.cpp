@@ -1,6 +1,7 @@
 #include "BLEUuid.h"
 
 #include "BLEDeviceLimits.h"
+#include "BLEUtil.h"
 
 #include "BLEPeripheral.h"
 
@@ -10,7 +11,7 @@
 #define DEFAULT_APPEARANCE  0x0000
 
 BLEPeripheral::BLEPeripheral(unsigned char req, unsigned char rdy, unsigned char rst) :
-#ifdef NRF51
+#if defined(NRF51) || defined(__RFduino__)
   _nRF51822(),
 #else
   _nRF8001(req, rdy, rst),
@@ -31,7 +32,7 @@ BLEPeripheral::BLEPeripheral(unsigned char req, unsigned char rdy, unsigned char
 
   _central(this)
 {
-#ifdef NRF51
+#if defined(NRF51) || defined(__RFduino__)
   this->_device = &this->_nRF51822;
 #else
   this->_device = &this->_nRF8001;
@@ -128,6 +129,10 @@ void BLEPeripheral::setLocalName(const char* localName) {
 
 void BLEPeripheral::setConnectable(bool connectable) {
   this->_device->setConnectable(connectable);
+}
+
+void BLEPeripheral::setBondStore(BLEBondStore& bondStore) {
+  this->_device->setBondStore(bondStore);
 }
 
 void BLEPeripheral::setDeviceName(const char* deviceName) {
@@ -238,13 +243,7 @@ void BLEPeripheral::BLEDeviceAddressReceived(BLEDevice& device, const unsigned c
 #ifdef BLE_PERIPHERAL_DEBUG
   char addressStr[18];
 
-  sprintf(addressStr, "%.2x:%.2x:%.2x:%.2x:%.2x:%.2x",
-    address[5],
-    address[4],
-    address[3],
-    address[2],
-    address[1],
-    address[0]);
+  BLEUtil::addressToString(address, addressStr);
 
   Serial.print(F("Peripheral address: "));
   Serial.println(addressStr);

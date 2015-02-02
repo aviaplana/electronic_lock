@@ -1,7 +1,11 @@
 #ifndef _NRF_51822_H_
 #define _NRF_51822_H_
 
-#include <ble_gatts.h>
+#ifdef __RFduino__
+  #include <utility/nrf51822/s110/ble_gatts.h>
+#else
+  #include <s110/ble_gatts.h>
+#endif
 
 #include "BLEDevice.h"
 
@@ -53,6 +57,9 @@ class nRF51822 : public BLEDevice
     BLECharacteristic*           _broadcastCharacteristic;
 
     uint16_t                     _connectionHandle;
+    bool                         _storeAuthStatus;
+    uint8_t                      _authStatusBuffer[((sizeof(ble_gap_evt_auth_status_t) + 3) / 4) * 4]  __attribute__ ((__aligned__(4)));
+    ble_gap_evt_auth_status_t*   _authStatus;
 
     unsigned char                _numCharacteristics;
     struct characteristicInfo*   _characteristicInfo;

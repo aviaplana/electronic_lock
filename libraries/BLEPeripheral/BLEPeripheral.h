@@ -4,13 +4,16 @@
 #include "Arduino.h"
 
 #include "BLEAttribute.h"
+#include "BLEBondStore.h"
 #include "BLECentral.h"
+#include "BLEConstantCharacteristic.h"
 #include "BLEDescriptor.h"
 #include "BLEDevice.h"
+#include "BLEFixedLengthCharacteristic.h"
 #include "BLEService.h"
 #include "BLETypedCharacteristics.h"
 
-#ifdef NRF51
+#if defined(NRF51) || defined(__RFduino__)
   #include "nRF51822.h"
 #else
   #include "nRF8001.h"
@@ -22,6 +25,7 @@ enum BLEPeripheralEvent {
 };
 
 typedef void (*BLEPeripheralEventHandler)(BLECentral& central);
+
 
 class BLEPeripheral : public BLEDeviceEventListener, public BLECharacteristicValueChangeListener
 {
@@ -38,6 +42,8 @@ class BLEPeripheral : public BLEDeviceEventListener, public BLECharacteristicVal
 
     void setAdvertisingInterval(unsigned short advertisingInterval);
     void setConnectable(bool connectable);
+    void setBondStore(BLEBondStore& bondStore);
+
 
     void setDeviceName(const char* deviceName);
     void setAppearance(unsigned short appearance);
@@ -70,7 +76,7 @@ class BLEPeripheral : public BLEDeviceEventListener, public BLECharacteristicVal
   private:
     BLEDevice*                     _device;
 
-#ifdef NRF51
+#if defined(NRF51) || defined(__RFduino__)
     nRF51822                       _nRF51822;
 #else
     nRF8001                        _nRF8001;

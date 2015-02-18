@@ -1,4 +1,5 @@
 // Import libraries (BLEPeripheral depends on SPI)
+
 #include <SPI.h>
 #include <BLEPeripheral.h>
 #include "sha256.h"
@@ -6,6 +7,8 @@
 #include <EEPROM.h>
 #include <DB.h>
 #include <ADCTouch.h>
+
+#include <Servo.h> 
 
 // message types
 const unsigned char REGISTRATION_REQ = 1;
@@ -35,6 +38,29 @@ const unsigned char STATUS_LOCKED = 1;
 #define LED_PIN   13
 #define BUTTON_PIN  A3
 
+// Pins of the hall sensor
+// Left|Middle|Right referrer to front view of the cylinder lock
+#define HALL_LEFT 0
+#define HALL_MIDDLE 1
+#define HALL_RIGHT 2
+
+// Pin mapping for the servo
+#define SERVO_PIN        9
+#define SERVO_STOP_ANGLE 90
+
+#define TIMEOUT_MOTOR_TURN 1000 
+#define OPERATION_OK       0
+#define OPERATION_FAILED   1
+
+// Possible values of lock_state
+// Assumes lock cylinder opening to the right
+#define LOCK_OPENING_START   0b00000100
+#define LOCK_OPENING_MIDDLE  0b00000110
+#define LOCK_CLOSING_START   0b00000001
+#define LOCK_CLOSING_MIDDLE  0b00000011
+#define LOCK_OPERATION_END   0b00000111
+#define LOCK_IDLE            0b00000000
+
 // Touch
 #define BUTTUN_PRESS_TIME_LIMIT 5000 // User has 5 seconds, or the registration fails
 int touchRef0;
@@ -52,6 +78,11 @@ struct UserRec {
   uint8_t secretKey[HMAC_KEY_LENGTH];
 } userRec;
 
+// Current status of the cylinder updated via interrupts
+// The first 3 bits represent the hall sensors reading
+volatile byte lock_state = 0x00;
+volatile byte previous_lock_state = 0x00;
+
 /*----- BLE Utility -------------------------------------------------------------------------*/
 // create peripheral instance, see pinouts above
 BLEPeripheral            blePeripheral        = BLEPeripheral(BLE_REQ, BLE_RDY, BLE_RST);
@@ -67,6 +98,8 @@ BLECharacteristic    statusCharacteristic = BLECharacteristic("713d0004503e4c75b
 /*--------------------------------------------------------------------------------------------*/
 
 boolean doorsLocked = false;
+
+Servo servo;
 
 void setup()
 {  
@@ -95,6 +128,19 @@ void setup()
   
   // Get touch reference value
   touchRef0 = ADCTouch.read(BUTTON_PIN, 500); 
+  
+  // Initialise pins for hall sensors
+  pinMode(HALL_LEFT, INPUT);
+  pinMode(HALL_MIDDLE, INPUT);
+  pinMode(HALL_RIGHT, INPUT);
+  
+  // Initialise the servo
+  servo.attach(SERVO_PIN);
+  
+  // Initialise hall sensor interrupt detection
+  attachInterrupt(0,interruptHallLeft,CHANGE);
+  attachInterrupt(1,interruptHallMiddle,CHANGE);
+  attachInterrupt(0,interruptHallRight,CHANGE);
 
   /*----- BLE Utility ---------------------------------------------*/
   // set advertised local name and service UUID
@@ -253,39 +299,91 @@ uint8_t* calculateHMAC(uint8_t* key, unsigned char* messageFirstPart){
 void unlockDoors(){
 
   if(doorsLocked){
-    swithchLED(false);
-    delay(500);
-    swithchLED(true);
-    delay(500);
-    swithchLED(false);
-    delay(500);
-    swithchLED(true);
-    delay(500);
-    swithchLED(false);
-
-    doorsLocked = false;
+    if(unlockTurn() == OPERATION_OK) {
+      if(unlockTurn() == OPERATION_OK) {
+        doorsLocked = false;
+        statusCharacteristic.setValue(&STATUS_UNLOCKED, TYPE_LENGTH);
+      }
+    }
   }  
-  statusCharacteristic.setValue(&STATUS_UNLOCKED, TYPE_LENGTH);
 }
 
 void lockDoors(){
   if(!doorsLocked){
-    swithchLED(true);
-    delay(500);
-    swithchLED(false);
-    delay(500);
-    swithchLED(true);
-    delay(500);
-    swithchLED(false);
-    delay(500);
-    swithchLED(true);
-
-    doorsLocked = true;
+    if(lockTurn() == OPERATION_OK){
+      if(lockTurn() == OPERATION_OK) {
+        doorsLocked = true;
+        statusCharacteristic.setValue(&STATUS_LOCKED, TYPE_LENGTH);    
+      }
+    } 
   }
-  statusCharacteristic.setValue(&STATUS_LOCKED, TYPE_LENGTH);    
 }
 
-void swithchLED(boolean enable){
-  digitalWrite(LED_PIN, (enable) ? HIGH : LOW);   // turn the LED on (HIGH is the voltage level)
+
+boolean lockTurn() {
+  unsigned long start_time = millis();
+  unsigned long delta_t = 0;
+  motorTurnLeft();
+  
+  // TODO: What happens if mills() is to slow and lock_state changes too fast?
+  while(lock_state != LOCK_OPERATION_END) {
+    delta_t = start_time - millis();
+    if (delta_t > TIMEOUT_MOTOR_TURN) {
+      return OPERATION_FAILED;
+    }
+  }
+  motorStop();
+  return OPERATION_OK;
+}
+
+boolean unlockTurn() {
+  unsigned long start_time = millis();
+  unsigned long delta_t = 0;
+  motorTurnRight();
+  
+  // TODO: What happens if mills() is to slow and lock_state changes too fast?
+  while(lock_state != LOCK_OPERATION_END) {
+    delta_t = start_time - millis();
+    if(delta_t > TIMEOUT_MOTOR_TURN) {
+      return OPERATION_FAILED;
+    }
+  }
+  motorStop();
+  return OPERATION_OK;
+}
+
+
+/* Motor helper functions */
+
+void motorStop() {
+  servo.write(SERVO_STOP_ANGLE);
+}
+
+void motorTurnLeft() {
+  servo.write(0);
+}
+
+void motorTurnRight() {
+  servo.write(180);
+}
+
+/* Hall switches interrupt routines */
+
+void interruptHallLeft()
+{
+  previous_lock_state = lock_state;
+  lock_state ^= 0b00000100;
+}
+
+void interruptHallMiddle()
+{
+  previous_lock_state = lock_state;
+  lock_state ^= 0b00000010;
+}
+
+void interruptHallRight()
+{
+  previous_lock_state = lock_state;
+  lock_state ^= 0b00000001;
 }
 

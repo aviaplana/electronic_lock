@@ -8,8 +8,6 @@
 #include <DB.h>
 #include <ADCTouch.h>
 
-#include <Servo.h> 
-
 // message types
 const unsigned char REGISTRATION_REQ = 1;
 const unsigned char KEY_EXCHANGE = 2;
@@ -44,10 +42,6 @@ const unsigned char STATUS_LOCKED = 1;
 #define HALL_MIDDLE 1
 #define HALL_RIGHT 2
 
-// Pin mapping for the servo
-#define SERVO_PIN        9
-#define SERVO_STOP_ANGLE 90
-
 #define TIMEOUT_MOTOR_TURN 1000 
 #define OPERATION_OK       0
 #define OPERATION_FAILED   1
@@ -60,6 +54,10 @@ const unsigned char STATUS_LOCKED = 1;
 #define LOCK_CLOSING_MIDDLE  0b00000011
 #define LOCK_OPERATION_END   0b00000111
 #define LOCK_IDLE            0b00000000
+
+// Pins to interface with the Motor
+#define MOTOR_PIN_A   3
+#define MOTOR_PIN_B   5
 
 // Touch
 #define BUTTUN_PRESS_TIME_LIMIT 5000 // User has 5 seconds, or the registration fails
@@ -99,8 +97,6 @@ BLECharacteristic    statusCharacteristic = BLECharacteristic("713d0004503e4c75b
 
 boolean doorsLocked = false;
 
-Servo servo;
-
 void setup()
 {  
   Serial.begin(115200);
@@ -134,8 +130,9 @@ void setup()
   pinMode(HALL_MIDDLE, INPUT);
   pinMode(HALL_RIGHT, INPUT);
   
-  // Initialise the servo
-  servo.attach(SERVO_PIN);
+  // Initialise pins for the h-bridge
+  pinMode(MOTOR_PIN_A, OUTPUT);
+  pinMode(MOTOR_PIN_B, OUTPUT);
   
   // Initialise hall sensor interrupt detection
   attachInterrupt(0,interruptHallLeft,CHANGE);
@@ -356,15 +353,18 @@ boolean unlockTurn() {
 /* Motor helper functions */
 
 void motorStop() {
-  servo.write(SERVO_STOP_ANGLE);
+  digitalWrite(MOTOR_PIN_A,LOW);
+  digitalWrite(MOTOR_PIN_B,LOW);
 }
 
 void motorTurnLeft() {
-  servo.write(0);
+  digitalWrite(MOTOR_PIN_A,HIGH);
+  digitalWrite(MOTOR_PIN_B,LOW);
 }
 
 void motorTurnRight() {
-  servo.write(180);
+  digitalWrite(MOTOR_PIN_A,LOW);
+  digitalWrite(MOTOR_PIN_B,HIGH);
 }
 
 /* Hall switches interrupt routines */

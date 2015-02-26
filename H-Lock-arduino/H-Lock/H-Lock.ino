@@ -6,7 +6,6 @@
 #include <Entropy.h>
 #include <EEPROM.h>
 #include <DB.h>
-#include <ADCTouch.h>
 
 // message types
 const unsigned char REGISTRATION_REQ = 1;
@@ -29,18 +28,30 @@ const unsigned char STATUS_LOCKED = 1;
 #define MESSAGE_FIRST_PART_LENGTH TYPE_LENGTH + RANDOM_LENGTH + ID_LENGTH
 #define MESSAGE_LENGTH 20
 
+
+// ################### PIN ASSIGNMENTS ###################
+
 // define pins (varies per shield/board)
 #define BLE_REQ   6
 #define BLE_RDY   7
 #define BLE_RST   4
 #define LED_PIN   13
-#define BUTTON_PIN  A3
 
 // Pins of the hall sensor
 // Left|Middle|Right referrer to front view of the cylinder lock
 #define HALL_LEFT 0
 #define HALL_MIDDLE 1
 #define HALL_RIGHT 2
+
+// Pins to interface with the Motor
+#define MOTOR_PIN_A   5
+#define MOTOR_PIN_B   8
+
+// Button pin for syncing
+#define BUTTON_PIN  3
+
+// ################### END PIN ASSIGNMENTS ###################
+
 
 #define TIMEOUT_MOTOR_TURN 1000 
 #define OPERATION_OK       0
@@ -55,13 +66,8 @@ const unsigned char STATUS_LOCKED = 1;
 #define LOCK_OPERATION_END   0b00000111
 #define LOCK_IDLE            0b00000000
 
-// Pins to interface with the Motor
-#define MOTOR_PIN_A   3
-#define MOTOR_PIN_B   5
-
 // Touch
 #define BUTTUN_PRESS_TIME_LIMIT 5000 // User has 5 seconds, or the registration fails
-int touchRef0;
 
 // DB
 //#define DB_CREATE
@@ -122,8 +128,7 @@ void setup()
   // Initialize digital pin for LED
   pinMode(LED_PIN, OUTPUT);
   
-  // Get touch reference value
-  touchRef0 = ADCTouch.read(BUTTON_PIN, 500); 
+  pinMode(BUTTON_PIN, INPUT);
   
   // Initialise pins for hall sensors
   pinMode(HALL_LEFT, INPUT);
@@ -248,7 +253,7 @@ void registerUser(){
   unsigned long validBeforeTime = startTime + BUTTUN_PRESS_TIME_LIMIT;
   boolean pressed = false;
   do{
-    pressed = ADCTouch.read(BUTTON_PIN)-touchRef0 > 40;
+    pressed = digitalRead(BUTTON_PIN); 
   }while(!pressed && millis() <= validBeforeTime);
   
   if(!pressed){

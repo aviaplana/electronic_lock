@@ -411,18 +411,19 @@ void interruptHallRight()
 
 void feedback(boolean ok)
 {
-  
-  digitalWrite(LED_PIN, HIGH);
+  int i;
   
   if (ok) {
-    delay(500);
-    digitalWrite(LED_PIN, LOW);
-    delay(500);
-    digitalWrite(LED_PIN, HIGH);
+    for (i = 0; i < 2; i++) {
+      delay(500);
+      digitalWrite(LED_PIN, LOW);
+      delay(500);
+      digitalWrite(LED_PIN, HIGH);
+    }
     delay(500);
   }
   else {
-    for (int i = 0; i < 3; i++) {
+    for (i = 0; i < 4; i++) {
       delay(150);
       digitalWrite(LED_PIN, LOW);
       delay(150);

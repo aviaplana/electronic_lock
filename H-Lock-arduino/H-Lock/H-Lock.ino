@@ -105,7 +105,7 @@ boolean doorsLocked = false;
 
 void setup()
 {  
-  Serial.begin(115200);
+  //Serial.begin(115200);
 #if defined (__AVR_ATmega32U4__)
   //Wait until the serial port is available (useful only for the Leonardo)
   //As the Leonardo board is not reseted every time you open the Serial Monitor
@@ -120,7 +120,7 @@ void setup()
     idSeq = EEPROM.read(ID_SEQ_LOCATION);
   #endif  
   db.open(MY_TBL);
-  Serial.println(idSeq);
+ // Serial.println(idSeq);
   
   // Random library initialization
   Entropy.initialize();
@@ -128,7 +128,7 @@ void setup()
   // Initialize digital pin for LED
   pinMode(LED_PIN, OUTPUT);
   
-  pinMode(BUTTON_PIN, INPUT);
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
   
   // Initialise pins for hall sensors
   pinMode(HALL_LEFT, INPUT);
@@ -138,6 +138,7 @@ void setup()
   // Initialise pins for the h-bridge
   pinMode(MOTOR_PIN_A, OUTPUT);
   pinMode(MOTOR_PIN_B, OUTPUT);
+  motorStop();
   
   // Initialise hall sensor interrupt detection
   attachInterrupt(0,interruptHallLeft,CHANGE);
@@ -166,8 +167,7 @@ void setup()
   // begin initialization
   blePeripheral.begin();
   /*---------------------------------------------------------------*/
-
-  Serial.println(F("H-Lock started"));
+ // Serial.println(F("H-Lock started"));
 }
 
 void loop()
@@ -178,13 +178,13 @@ void loop()
 
 void blePeripheralConnectHandler(BLECentral& central) {
   // central connected event handler
-  Serial.println(F("Connected to central"));
+ // Serial.println(F("Connected to central"));
 //  Serial.println(central.address());
 }
 
 void blePeripheralDisconnectHandler(BLECentral& central) {
   // central disconnected event handler
-  Serial.println(F("Disconnected from central"));
+//  Serial.println(F("Disconnected from central"));
 //  Serial.println(central.address());
 
   // Clear characteristics
@@ -195,8 +195,8 @@ void blePeripheralDisconnectHandler(BLECentral& central) {
 void rxCharacteristicWritten(BLECentral& central, BLECharacteristic& characteristic) {
   unsigned char len = rxCharacteristic.valueLength();
   const unsigned char *message = rxCharacteristic.value();
-  Serial.print(F("didCharacteristicWritten, Length: ")); 
-  Serial.println(len, DEC);
+//  Serial.print(F("didCharacteristicWritten, Length: ")); 
+//  Serial.println(len, DEC);
 //  unsigned char i = 0;
 //  while(i<len)
 //  {
@@ -219,16 +219,20 @@ void rxCharacteristicWritten(BLECentral& central, BLECharacteristic& characteris
             break;
             default:{
               txCharacteristic.setValue(&ERROR_WRONG_COMMAND, TYPE_LENGTH);
+              feedback(false);
             }
           }
       }else{
         txCharacteristic.setValue(&ERROR_AUTHENTICATION, TYPE_LENGTH);
+        feedback(false);
       }
     } else{
       txCharacteristic.setValue(&ERROR_WRONG_ID, TYPE_LENGTH);
+      feedback(false);
     }
   }else{
     txCharacteristic.setValue(&ERROR_WRONG_COMMAND, TYPE_LENGTH);
+    feedback(false);
   }
 }
 
@@ -248,17 +252,21 @@ boolean loadUser(unsigned char id){
 }
 
 void registerUser(){
+  digitalWrite(LED_PIN, HIGH);
   // In 5 seconds the user should press the button or the registration fails
   unsigned long startTime = millis();
   unsigned long validBeforeTime = startTime + BUTTUN_PRESS_TIME_LIMIT;
-  boolean pressed = false;
+  boolean pressed = true;
   do{
     pressed = digitalRead(BUTTON_PIN); 
-  }while(!pressed && millis() <= validBeforeTime);
+  }while(pressed && millis() <= validBeforeTime);
   
-  if(!pressed){
+  if(pressed){
     txCharacteristic.setValue(&ERROR_REGISTRATION_FAILED, TYPE_LENGTH);
+    feedback(false);
     return;
+  } else {
+    feedback(true);
   }
 
   // Create secret key
@@ -307,7 +315,9 @@ void unlockDoors(){
         statusCharacteristic.setValue(&STATUS_UNLOCKED, TYPE_LENGTH);
       }
     }
-  }  
+  } else {
+    feedback(false); 
+  }
 }
 
 void lockDoors(){
@@ -318,6 +328,8 @@ void lockDoors(){
         statusCharacteristic.setValue(&STATUS_LOCKED, TYPE_LENGTH);    
       }
     } 
+  } else {
+    feedback(false); 
   }
 }
 
@@ -331,14 +343,17 @@ boolean lockTurn() {
   while(lock_state != LOCK_OPERATION_END) {
     delta_t = start_time - millis();
     if (delta_t > TIMEOUT_MOTOR_TURN) {
+      feedback(false);
       return OPERATION_FAILED;
     }
   }
   motorStop();
+  feedback(true);
   return OPERATION_OK;
 }
 
 boolean unlockTurn() {
+  digitalWrite(LED_PIN, HIGH);
   unsigned long start_time = millis();
   unsigned long delta_t = 0;
   motorTurnRight();
@@ -347,10 +362,12 @@ boolean unlockTurn() {
   while(lock_state != LOCK_OPERATION_END) {
     delta_t = start_time - millis();
     if(delta_t > TIMEOUT_MOTOR_TURN) {
+      feedback(false);
       return OPERATION_FAILED;
     }
   }
   motorStop();
+  feedback(true);
   return OPERATION_OK;
 }
 
@@ -392,3 +409,27 @@ void interruptHallRight()
   lock_state ^= 0b00000001;
 }
 
+void feedback(boolean ok)
+{
+  
+  digitalWrite(LED_PIN, HIGH);
+  
+  if (ok) {
+    delay(500);
+    digitalWrite(LED_PIN, LOW);
+    delay(500);
+    digitalWrite(LED_PIN, HIGH);
+    delay(500);
+  }
+  else {
+    for (int i = 0; i < 3; i++) {
+      delay(150);
+      digitalWrite(LED_PIN, LOW);
+      delay(150);
+      digitalWrite(LED_PIN, HIGH);
+    }
+    delay(150);
+  }
+     
+  digitalWrite(LED_PIN, LOW);
+}

@@ -29,6 +29,7 @@ import android.widget.Toast;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 
 import butterknife.ButterKnife;
 import butterknife.InjectView;
@@ -317,6 +318,7 @@ public class AddLockActivity extends BaseActivity  {
     private class LeDeviceListAdapter extends BaseAdapter {
         private ArrayList<BluetoothDevice> mLeDevices;
         private LayoutInflater mInflator;
+        HashMap<String, Integer> devicesRssi = new HashMap<>();
 
         public LeDeviceListAdapter() {
             super();
@@ -324,10 +326,11 @@ public class AddLockActivity extends BaseActivity  {
             mInflator = AddLockActivity.this.getLayoutInflater();
         }
 
-        public void addDevice(BluetoothDevice device) {
+        public void addDevice(BluetoothDevice device, int rssi) {
             if(!mLeDevices.contains(device)) {
                 mLeDevices.add(device);
             }
+            devicesRssi.put(device.getAddress(), rssi);
         }
 
         public BluetoothDevice getDevice(int position) {
@@ -367,12 +370,16 @@ public class AddLockActivity extends BaseActivity  {
 
             BluetoothDevice device = mLeDevices.get(i);
             final String deviceName = device.getName();
-            if (deviceName != null && deviceName.length() > 0)
+            if (deviceName != null && deviceName.length() > 0) {
                 viewHolder.deviceName.setText(deviceName);
-            else
-                viewHolder.deviceName.setText(R.string.unknown_device);
+            }
+            else{
+                    viewHolder.deviceName.setText(R.string.unknown_device);
+                }
             viewHolder.deviceAddress.setText(device.getAddress());
 
+            int rssi = devicesRssi.get(device.getAddress());
+            viewHolder.deviceRssi.setText(rssi+" mDb");
             return view;
         }
     }
@@ -380,6 +387,7 @@ public class AddLockActivity extends BaseActivity  {
     static class ViewHolder {
         @InjectView(R.id.device_address) TextView deviceAddress;
         @InjectView(R.id.device_name) TextView deviceName;
+        @InjectView(R.id.device_rssi) TextView deviceRssi;
 
         ViewHolder(View view) {
             ButterKnife.inject(this, view);
@@ -392,12 +400,12 @@ public class AddLockActivity extends BaseActivity  {
     private BluetoothAdapter.LeScanCallback mLeScanCallback =
             new BluetoothAdapter.LeScanCallback() {
                 @Override
-                public void onLeScan(final BluetoothDevice device, int rssi,
+                public void onLeScan(final BluetoothDevice device, final int rssi,
                                      byte[] scanRecord) {
                     runOnUiThread(new Runnable() {
                         @Override
                         public void run() {
-                            mLeDeviceListAdapter.addDevice(device);
+                            mLeDeviceListAdapter.addDevice(device, rssi);
                             mLeDeviceListAdapter.notifyDataSetChanged();
                         }
                     });

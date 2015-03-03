@@ -53,15 +53,15 @@ const unsigned char STATUS_LOCKED = 1;
 // ################### END PIN ASSIGNMENTS ###################
 
 
-#define TIMEOUT_MOTOR_TURN 1000 
+#define TIMEOUT_MOTOR_TURN 3000 
 #define OPERATION_OK       0
 #define OPERATION_FAILED   1
 
 // Possible values of lock_state
 // Assumes lock cylinder opening to the right
 #define LOCK_OPERATION_END      0b00000000
-#define LOCK_OPERATION_OPENING  0b00000011
-#define LOCK_OPERATION_CLOSING  0b00000110
+#define LOCK_OPERATION_OPENING  0b00000001
+#define LOCK_OPERATION_CLOSING  0b00000000
 
 // Touch
 #define BUTTUN_PRESS_TIME_LIMIT 5000 // User has 5 seconds, or the registration fails
@@ -81,8 +81,8 @@ struct UserRec {
 
 // Current status of the cylinder updated via interrupts
 // The first 3 bits represent the hall sensors reading
-volatile byte lock_state = 0x00;
-volatile byte previous_lock_state = 0x00;
+volatile byte lock_state = 0x01;
+volatile byte previous_lock_state = 0x01;
 
 // Flag to check if the user is manually operating the lock
 volatile bool user_operation = false;
@@ -132,14 +132,13 @@ void setup()
   pinMode(BUTTON_PIN, INPUT_PULLUP);
   
   // Initialise pins for hall sensors
-  pinMode(HALL_LEFT, INPUT);
-  pinMode(HALL_MIDDLE, INPUT);
-  pinMode(HALL_RIGHT, INPUT);
+  pinMode(HALL_LEFT, INPUT_PULLUP);
+  pinMode(HALL_MIDDLE, INPUT_PULLUP);
+  pinMode(HALL_RIGHT, INPUT_PULLUP);
   
   // Initialise pins for the h-bridge
   pinMode(MOTOR_PIN_A, OUTPUT);
   pinMode(MOTOR_PIN_B, OUTPUT);
-  motorStop();
   
   // Initialise hall sensor interrupt detection
   attachInterrupt(1,interruptHallMiddle,CHANGE);
@@ -259,12 +258,16 @@ boolean loadUser(unsigned char id){
     for (int i = 1; i <= db.nRecs(); i++){
       db.read(i, DB_REC userRec);
       if(userRec.id == id){
+          statusCharacteristic.setValue((doorsLocked) ? &STATUS_LOCKED : &STATUS_UNLOCKED, TYPE_LENGTH); 
+
         return true;
       }
     }
     // Did not find it
     return false;
   }
+    statusCharacteristic.setValue((doorsLocked) ? &STATUS_LOCKED : &STATUS_UNLOCKED, TYPE_LENGTH); 
+
   return true;
 }
 
@@ -335,6 +338,7 @@ void unlockDoors(){
       }
     }
   } else {
+    //statusCharacteristic.setValue(&STATUS_LOCKED, TYPE_LENGTH);
     feedback(false); 
   }
 }
@@ -350,6 +354,7 @@ void lockDoors(){
       }
     } 
   } else {
+    //statusCharacteristic.setValue(&STATUS_UNLOCKED, TYPE_LENGTH);
     feedback(false); 
   }
 }
@@ -361,13 +366,16 @@ boolean lockTurn() {
   motorTurnLeft();
   
   // TODO: What happens if mills() is to slow and lock_state changes too fast?
-  while(lock_state != LOCK_OPERATION_END) {
-    delta_t = start_time - millis();
+  lock_state = 0x02;
+  do {
+    delta_t = millis() - start_time;
     if (delta_t > TIMEOUT_MOTOR_TURN) {
       feedback(false);
+      motorStop();
       return OPERATION_FAILED;
     }
-  }
+  }  while (lock_state != LOCK_OPERATION_END);
+  
   motorStop();
   feedback(true);
   return OPERATION_OK;
@@ -380,13 +388,16 @@ boolean unlockTurn() {
   motorTurnRight();
   
   // TODO: What happens if mills() is to slow and lock_state changes too fast?
-  while(lock_state != LOCK_OPERATION_END) {
-    delta_t = start_time - millis();
+  lock_state = 0x02;
+  do {
+    delta_t = millis() - start_time;
     if(delta_t > TIMEOUT_MOTOR_TURN) {
       feedback(false);
+      motorStop();
       return OPERATION_FAILED;
+      
     }
-  }
+  }  while (lock_state != LOCK_OPERATION_END);
   motorStop();
   feedback(true);
   return OPERATION_OK;

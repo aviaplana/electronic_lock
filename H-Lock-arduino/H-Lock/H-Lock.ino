@@ -309,6 +309,8 @@ uint8_t* calculateHMAC(uint8_t* key, unsigned char* messageFirstPart){
 void unlockDoors(){
 
   if(doorsLocked){
+    // European doors mostly have two lockturns
+    // Only continue if previous operation was successful
     if(unlockTurn() == OPERATION_OK) {
       if(unlockTurn() == OPERATION_OK) {
         doorsLocked = false;
@@ -322,6 +324,8 @@ void unlockDoors(){
 
 void lockDoors(){
   if(!doorsLocked){
+    // European doors mostly have two lockturns
+    // Only continue if previous operation was successful
     if(lockTurn() == OPERATION_OK){
       if(lockTurn() == OPERATION_OK) {
         doorsLocked = true;

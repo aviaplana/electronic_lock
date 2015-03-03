@@ -99,6 +99,10 @@ public class BLService extends Service {
             if (status == BluetoothGatt.GATT_SUCCESS) {
                 broadcastUpdate(ACTION_DATA_AVAILABLE, characteristic);
             }
+            characteristicReadQueue.poll();
+            if((characteristicReadQueue.size() > 0) && (descriptorWriteQueue.size() == 0)){
+                boolean a = mBluetoothGatt.readCharacteristic(characteristicReadQueue.element());
+            }
         }
 
         @Override
@@ -115,12 +119,13 @@ public class BLService extends Service {
             else{
                 Log.d(TAG, "Callback: Error writing GATT Descriptor: "+ status);
             }
-            descriptorWriteQueue.remove();  //pop the item that we just finishing writing
+            descriptorWriteQueue.poll();  //pop the item that we just finishing writing
             //if there is more to write, do it!
             if(descriptorWriteQueue.size() > 0)
                 mBluetoothGatt.writeDescriptor(descriptorWriteQueue.element());
-            else if(characteristicReadQueue.size() > 0)
+            else if(characteristicReadQueue.size() > 0) {
                 mBluetoothGatt.readCharacteristic(characteristicReadQueue.element());
+            }
         }
     };
     private BluetoothDevice bluetoothDevice;
@@ -365,12 +370,12 @@ public class BLService extends Service {
                 .getCharacteristic(BLService.UUID_BLE_SHIELD_RX);
         setCharacteristicNotification(characteristicRx, true);
         map.put(characteristicRx.getUuid(), characteristicRx);
-        readCharacteristic(characteristicRx);
+//        readCharacteristic(characteristicRx);
 
         BluetoothGattCharacteristic characteristicLock = gattService
                 .getCharacteristic(BLService.UUID_BLE_SHIELD_LOCK);
         setCharacteristicNotification(characteristicLock, true);
         map.put(characteristicLock.getUuid(), characteristicLock);
-        readCharacteristic(characteristicLock);
+//        readCharacteristic(characteristicLock);
     }
 }

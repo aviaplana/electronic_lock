@@ -171,9 +171,9 @@ public class MainActivity extends BaseActivity  {
     }
 
     private void changeGlowPadDrawables(boolean locked){
+        glowPad.reset(true);
         glowPad.setHandleDrawable((locked) ? R.drawable.ic_lockscreen_handle : R.drawable.ic_unlockscreen_handle);
         glowPad.setTargetResources((locked) ? R.array.unlock : R.array.lock);
-        glowPad.reset(true);
     }
 
     private final BroadcastReceiver mGattUpdateReceiver = new BroadcastReceiver() {
@@ -307,22 +307,6 @@ public class MainActivity extends BaseActivity  {
         mBluetoothLeService = null;
     }
 
-    // Device scan callback.
-    private BluetoothAdapter.LeScanCallback mLeScanCallback =
-            new BluetoothAdapter.LeScanCallback() {
-                @Override
-                public void onLeScan(final BluetoothDevice device, int rssi,
-                                     byte[] scanRecord) {
-                    runOnUiThread(new Runnable() {
-                        @Override
-                        public void run() {
-//                            mLeDeviceListAdapter.addDevice(device);
-//                            mLeDeviceListAdapter.notifyDataSetChanged();
-                        }
-                    });
-                }
-            };
-
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
 
@@ -336,6 +320,7 @@ public class MainActivity extends BaseActivity  {
                     finish();
                     return;
                 }else {
+                    registerReceiver(mGattUpdateReceiver, makeGattUpdateIntentFilter());
                     connectToLock();
                 }
                 break;

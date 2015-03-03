@@ -41,7 +41,8 @@ public class AddLockActivity extends BaseActivity  {
     @InjectView(R.id.listView)
     ListView listView;
 
-    private Menu actionMenu;
+    private Menu mActionMenu;
+    private MenuItem mRefreshItem;
 
     private String mDeviceName;
     private String mDeviceAddress;
@@ -92,6 +93,7 @@ public class AddLockActivity extends BaseActivity  {
                     mWelcomeOverlayVisible = false;
                     mSharedPrefEditor.putBoolean(MyApplication.SHARED_PREF_FIRST_RUN, false);
                     mSharedPrefEditor.commit();
+                    mRefreshItem.setVisible(true);
                     scanLeDevice(true);
                 }
             });
@@ -134,39 +136,24 @@ public class AddLockActivity extends BaseActivity  {
         barProgressDialog.setProgressStyle(barProgressDialog.STYLE_HORIZONTAL);
         barProgressDialog.setIndeterminate(false);
         barProgressDialog.setMax(5);
-        barProgressDialog.setProgress(5);
         barProgressDialog.show();
 
-//        final Handler h = new Handler();
-//        h.postDelayed(new Runnable() {
-//            @Override
-//            public void run() {
-//                if(barProgressDialog != null) {
-//                    if(barProgressDialog.getProgress() == 0){
-//                        barProgressDialog.dismiss();
-//                    }else {
-//                        barProgressDialog.incrementProgressBy(-1);
-//                        h.postDelayed(this, 1000);
-//                    }
-//                }
-//            }
-//        }, 1000);
+        barProgressDialog.setProgress(5);
 
-//        final Timer mTimer = new Timer();
-//        mTimer.schedule(new TimerTask() {
-//
-//            @Override
-//            public void run() {
-//                if(barProgressDialog != null) {
-//                    if(barProgressDialog.getProgress() == 0){
-//                        mTimer.cancel();
-//                        barProgressDialog.dismiss();
-//                    }else {
-//                        barProgressDialog.incrementProgressBy(-1);
-//                    }
-//                }
-//            }
-//        }, 1000, 1000);
+        final Handler h = new Handler();
+        h.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                if(barProgressDialog != null) {
+                    if(barProgressDialog.getProgress() == 0){
+                        barProgressDialog.dismiss();
+                    }else {
+                        barProgressDialog.incrementProgressBy(-1);
+                        h.postDelayed(this, 1000);
+                    }
+                }
+            }
+        }, 1000);
 
         BluetoothGattCharacteristic characteristicTx= mBluetoothLeService.map.get(BLService.UUID_BLE_SHIELD_TX);
 
@@ -179,7 +166,6 @@ public class AddLockActivity extends BaseActivity  {
         public void onReceive(Context context, Intent intent) {
             final String action = intent.getAction();
             if (BLService.ACTION_GATT_CONNECTED.equals(action)) {
-                Log.d("dev", "blabla");
                 new Handler().postDelayed(new Runnable() {
                     @Override
                     public void run() {
@@ -299,14 +285,12 @@ public class AddLockActivity extends BaseActivity  {
         new Handler().postDelayed(new Runnable() {
             @Override
             public void run() {
-                if (actionMenu != null) {
-                    final MenuItem refreshItem = actionMenu
-                            .findItem(R.id.action_refresh);
-                    if (refreshItem != null) {
+                if (mActionMenu != null) {
+                    if (mRefreshItem != null) {
                         if (enable) {
-                            refreshItem.setActionView(R.layout.progress_action_item);
+                            mRefreshItem.setActionView(R.layout.progress_action_item);
                         } else {
-                            refreshItem.setActionView(null);
+                            mRefreshItem.setActionView(null);
                         }
                     }
                 }
@@ -416,9 +400,15 @@ public class AddLockActivity extends BaseActivity  {
 
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
-        this.actionMenu = menu;
+        this.mActionMenu = menu;
         // Inflate the menu; this adds items to the action bar if it is present.
         getMenuInflater().inflate(R.menu.menu_add_new, menu);
+        mRefreshItem = mActionMenu.findItem(R.id.action_refresh);
+
+        if(mWelcomeOverlayVisible){
+            mRefreshItem.setVisible(false);
+        }
+
         return true;
     }
 

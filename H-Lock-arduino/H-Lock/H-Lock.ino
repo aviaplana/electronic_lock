@@ -59,12 +59,9 @@ const unsigned char STATUS_LOCKED = 1;
 
 // Possible values of lock_state
 // Assumes lock cylinder opening to the right
-#define LOCK_OPENING_START   0b00000100
-#define LOCK_OPENING_MIDDLE  0b00000110
-#define LOCK_CLOSING_START   0b00000001
-#define LOCK_CLOSING_MIDDLE  0b00000011
-#define LOCK_OPERATION_END   0b00000111
-#define LOCK_IDLE            0b00000000
+#define LOCK_OPERATION_END      0b00000000
+#define LOCK_OPERATION_OPENING  0b00000011
+#define LOCK_OPERATION_CLOSING  0b00000110
 
 // Touch
 #define BUTTUN_PRESS_TIME_LIMIT 5000 // User has 5 seconds, or the registration fails
@@ -86,6 +83,10 @@ struct UserRec {
 // The first 3 bits represent the hall sensors reading
 volatile byte lock_state = 0x00;
 volatile byte previous_lock_state = 0x00;
+
+// Flag to check if the user is manually operating the lock
+volatile bool user_operation = false;
+volatile bool app_operation = false;
 
 /*----- BLE Utility -------------------------------------------------------------------------*/
 // create peripheral instance, see pinouts above
@@ -141,9 +142,7 @@ void setup()
   motorStop();
   
   // Initialise hall sensor interrupt detection
-  attachInterrupt(0,interruptHallLeft,CHANGE);
   attachInterrupt(1,interruptHallMiddle,CHANGE);
-  attachInterrupt(0,interruptHallRight,CHANGE);
 
   /*----- BLE Utility ---------------------------------------------*/
   // set advertised local name and service UUID
@@ -174,6 +173,21 @@ void loop()
 {
   // Poll peripheral
   blePeripheral.poll();
+  
+  // Check if user operates the lock manually
+  if(user_operation) {
+    // Read out current lock status
+    if(previous_lock_state == LOCK_OPERATION_OPENING && lock_state == LOCK_OPERATION_END) {
+        // Update BLE characteristic
+        statusCharacteristic.setValue(&STATUS_UNLOCKED, TYPE_LENGTH); 
+    } else if(previous_lock_state == LOCK_OPERATION_CLOSING && lock_state == LOCK_OPERATION_END) {
+        // Update BLE characteristic
+        statusCharacteristic.setValue(&STATUS_LOCKED, TYPE_LENGTH); 
+    }
+    // Unset the flag
+    user_operation = false;
+    
+  }
 }
 
 void blePeripheralConnectHandler(BLECentral& central) {
@@ -212,9 +226,11 @@ void rxCharacteristicWritten(BLECentral& central, BLECharacteristic& characteris
       if(checkMessageSecurity(message)){
           switch(message[0]){
             case LOCK_REQ:
+              app_operation = true;
               lockDoors();
             break;
             case UNLOCK_REQ:
+              app_operation = false;
               unlockDoors();
             break;
             default:{
@@ -234,6 +250,7 @@ void rxCharacteristicWritten(BLECentral& central, BLECharacteristic& characteris
     txCharacteristic.setValue(&ERROR_WRONG_COMMAND, TYPE_LENGTH);
     feedback(false);
   }
+  app_operation = false;
 }
 
 boolean loadUser(unsigned char id){
@@ -393,24 +410,17 @@ void motorTurnRight() {
   digitalWrite(MOTOR_PIN_B,HIGH);
 }
 
-/* Hall switches interrupt routines */
-
-void interruptHallLeft()
-{
-  previous_lock_state = lock_state;
-  lock_state ^= 0b00000100;
-}
+/* Hall switches interrupt routine */
 
 void interruptHallMiddle()
 {
   previous_lock_state = lock_state;
-  lock_state ^= 0b00000010;
-}
-
-void interruptHallRight()
-{
-  previous_lock_state = lock_state;
-  lock_state ^= 0b00000001;
+  //lock_state ^= 0b00000010;
+  lock_state = int(digitalRead(HALL_LEFT)) | (int(digitalRead(HALL_MIDDLE)) << 1) | (int(digitalRead(HALL_RIGHT)) << 2);
+  if(app_operation == false) {
+    user_operation = true;
+  } 
+  
 }
 
 void feedback(boolean ok)

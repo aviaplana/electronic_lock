@@ -135,6 +135,8 @@ public class AddLockActivity extends BaseActivity  {
         barProgressDialog.setCancelable(false);
         barProgressDialog.setProgressStyle(barProgressDialog.STYLE_HORIZONTAL);
         barProgressDialog.setIndeterminate(false);
+        barProgressDialog.setProgressNumberFormat("%1d seconds left");
+        barProgressDialog.setProgressPercentFormat(null);
         barProgressDialog.setMax(5);
         barProgressDialog.show();
 
@@ -323,6 +325,7 @@ public class AddLockActivity extends BaseActivity  {
 
         public void clear() {
             mLeDevices.clear();
+            devicesRssi.clear();
         }
 
         @Override

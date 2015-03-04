@@ -37,7 +37,7 @@
         android:visibility="visible"
         android:gravity="top"
 
-        app:targetDrawables="@array/unlock"
+        app:targetDrawables="@array/empty"
         app:handleDrawable="@drawable/ic_handle_disconnected"
         app:innerRadius="@dimen/glowpadview_inner_radius"
         app:outerRadius="@dimen/glowpadview_target_placement_radius"

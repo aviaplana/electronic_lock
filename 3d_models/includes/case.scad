@@ -65,7 +65,7 @@ module hole_case()
 }
 
 
-// The casing. This is the only part that should be printed!
+// The casing.
 module case()
 {
 	union()

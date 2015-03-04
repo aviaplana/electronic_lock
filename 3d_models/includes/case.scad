@@ -34,6 +34,22 @@ module bolt_hold()
 }
 
 
+// Box where the hall switches will be allocated
+module hall_box()
+{
+	difference()
+		{
+		translate([-1, 1, -1])
+		cube([7,4,6.5]);
+
+		cube([5,3,4]);
+		
+		translate([0.3, -1.5, 1])
+		cube([4.4,4,6]);
+	}
+}
+
+
 // Holes used to hold the case.
 module hole_case()
 {
